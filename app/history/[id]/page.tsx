@@ -59,7 +59,8 @@ export default function SessionDetailPage() {
   async function handleDelete() {
     if (!confirm('Delete this workout? This cannot be undone.')) return;
     setDeleting(true);
-    await supabase.from('personal_bests').update({ session_id: null }).eq('session_id', id);
+    // Delete PRs set in this session, then the session (sets cascade automatically).
+    await supabase.from('personal_bests').delete().eq('session_id', id);
     await supabase.from('workout_sessions').delete().eq('id', id);
     router.push('/history');
   }

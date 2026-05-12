@@ -28,7 +28,9 @@ function fmtDate(d: string) {
 }
 
 async function deleteSession(id: string) {
-  await supabase.from('personal_bests').update({ session_id: null }).eq('session_id', id);
+  // Delete PRs that were achieved in this session, then delete the session itself.
+  // workout_sets are removed automatically via ON DELETE CASCADE.
+  await supabase.from('personal_bests').delete().eq('session_id', id);
   await supabase.from('workout_sessions').delete().eq('id', id);
 }
 
