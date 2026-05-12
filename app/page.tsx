@@ -8,6 +8,8 @@ import { WorkoutSession, Exercise, WorkoutTemplate } from '@/lib/types';
 
 type TemplateCard = WorkoutTemplate & { exercises: Exercise[] };
 
+const PPL_ORDER = ['Push Day', 'Pull Day', 'Legs Day'];
+
 const DAY = {
   'Push Day': {
     gradient: 'from-orange-500/20 to-orange-500/0',
@@ -73,7 +75,7 @@ export default function Dashboard() {
   useEffect(() => {
     (async () => {
       const [tRes, teRes, sRes] = await Promise.all([
-        supabase.from('workout_templates').select('*').order('name'),
+        supabase.from('workout_templates').select('*'),
         supabase.from('template_exercises').select('template_id, exercises(*), order_index').order('order_index'),
         supabase.from('workout_sessions').select('*, workout_templates(name)').order('started_at', { ascending: false }).limit(3),
       ]);
@@ -84,7 +86,11 @@ export default function Dashboard() {
           if (!map[te.template_id]) map[te.template_id] = [];
           if (te.exercises) map[te.template_id].push(te.exercises);
         }
-        setTemplates(tRes.data.map(t => ({ ...t, exercises: map[t.id] ?? [] })));
+        setTemplates(
+          tRes.data
+            .map(t => ({ ...t, exercises: map[t.id] ?? [] }))
+            .sort((a, b) => PPL_ORDER.indexOf(a.name) - PPL_ORDER.indexOf(b.name))
+        );
       }
 
       if (sRes.data) {
