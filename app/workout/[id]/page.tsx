@@ -89,7 +89,7 @@ export default function ActiveWorkoutPage() {
     const existingSets = existingSetsRes.data ?? [];
 
     // Previous session sets for reference
-    let prevSetsMap: Record<string, PrevSet[]> = {};
+    const prevSetsMap: Record<string, PrevSet[]> = {};
     if (prevSessRes.data && prevSessRes.data.length > 0) {
       const { data: pSets } = await supabase
         .from('workout_sets')
@@ -211,7 +211,7 @@ export default function ActiveWorkoutPage() {
           { exercise_id: ex.exercise.id, weight, reps: reps || null, achieved_at: new Date().toISOString(), session_id: id },
           { onConflict: 'exercise_id' },
         );
-        setNewPRs((prev) => [...new Set([...prev, ex.exercise.name])]);
+        setNewPRs((prev) => Array.from(new Set([...prev, ex.exercise.name])));
         setExerciseData((prev) => {
           const next = [...prev];
           next[ei] = { ...next[ei], pb: { weight, reps: reps || null } };
