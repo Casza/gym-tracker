@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Dumbbell, ChevronRight, Calendar, TrendingUp } from 'lucide-react';
+import { ChevronRight, Calendar, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { WorkoutSession } from '@/lib/types';
 
@@ -27,9 +27,15 @@ function fmtDate(d: string) {
   return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+async function deleteSession(id: string) {
+  await supabase.from('personal_bests').update({ session_id: null }).eq('session_id', id);
+  await supabase.from('workout_sessions').delete().eq('id', id);
+}
+
 export default function HistoryPage() {
   const [sessions, setSessions] = useState<WorkoutSession[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [stats, setStats] = useState({ total: 0, week: 0, month: 0 });
 
   useEffect(() => {
@@ -47,13 +53,22 @@ export default function HistoryPage() {
       });
   }, []);
 
+  async function handleDelete(id: string, e: React.MouseEvent) {
+    e.preventDefault();
+    if (!confirm('Delete this workout? This cannot be undone.')) return;
+    setDeleting(id);
+    await deleteSession(id);
+    setSessions(prev => prev.filter(s => s.id !== id));
+    setStats(prev => ({ ...prev, total: Math.max(0, prev.total - 1) }));
+    setDeleting(null);
+  }
+
   if (loading) return <div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-orange-500" /></div>;
 
   return (
     <div className="px-4 pt-8 pb-6 max-w-lg mx-auto space-y-7">
       <h1 className="text-3xl font-black text-white tracking-tight">History</h1>
 
-      {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
         {[['Total', stats.total, 'text-white'], ['This Week', stats.week, 'text-orange-400'], ['This Month', stats.month, 'text-white']].map(
           ([label, val, color]) => (
@@ -65,7 +80,6 @@ export default function HistoryPage() {
         )}
       </div>
 
-      {/* Sessions list */}
       {sessions.length === 0 ? (
         <div className="bg-slate-800 border border-slate-700/50 rounded-2xl p-10 text-center">
           <Calendar className="w-10 h-10 text-slate-600 mx-auto mb-3" />
@@ -78,26 +92,37 @@ export default function HistoryPage() {
             const bar = BAR[(s as any).workout_templates?.name ?? ''] ?? 'bg-slate-600';
             const d = dur(s.started_at, s.completed_at);
             return (
-              <Link key={s.id}
-                href={s.completed_at ? `/history/${s.id}` : `/workout/${s.id}`}
-                className="bg-slate-800 border border-slate-700/50 rounded-2xl p-4 flex items-center justify-between active:bg-slate-700/80 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`w-1.5 h-11 rounded-full shrink-0 ${bar}`} />
-                  <div>
-                    <p className="font-bold text-white">{s.name}</p>
-                    <p className="text-slate-500 text-sm mt-0.5">
-                      {fmtDate(s.started_at)}{d ? ` · ${d}` : ''}
-                    </p>
+              <div key={s.id} className="relative">
+                <Link
+                  href={s.completed_at ? `/history/${s.id}` : `/workout/${s.id}`}
+                  className="bg-slate-800 border border-slate-700/50 rounded-2xl p-4 flex items-center justify-between active:bg-slate-700/80 transition-colors pr-14"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-1.5 h-11 rounded-full shrink-0 ${bar}`} />
+                    <div>
+                      <p className="font-bold text-white">{s.name}</p>
+                      <p className="text-slate-500 text-sm mt-0.5">
+                        {fmtDate(s.started_at)}{d ? ` · ${d}` : ''}
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {!s.completed_at && (
-                    <span className="text-xs font-bold text-orange-400 bg-orange-500/10 border border-orange-500/25 px-2.5 py-1 rounded-full">Active</span>
-                  )}
-                  <ChevronRight className="w-4 h-4 text-slate-600" />
-                </div>
-              </Link>
+                  <div className="flex items-center gap-2">
+                    {!s.completed_at && (
+                      <span className="text-xs font-bold text-orange-400 bg-orange-500/10 border border-orange-500/25 px-2.5 py-1 rounded-full">Active</span>
+                    )}
+                    <ChevronRight className="w-4 h-4 text-slate-600" />
+                  </div>
+                </Link>
+                <button
+                  onClick={(e) => handleDelete(s.id, e)}
+                  disabled={deleting === s.id}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-xl text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40"
+                >
+                  {deleting === s.id
+                    ? <div className="w-3.5 h-3.5 border-t border-red-400 rounded-full animate-spin" />
+                    : <Trash2 className="w-4 h-4" />}
+                </button>
+              </div>
             );
           })}
         </div>

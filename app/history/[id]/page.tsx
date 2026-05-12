@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Clock, Dumbbell, Zap, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Clock, Dumbbell, Zap, RotateCcw, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { WorkoutSession, WorkoutSet, Exercise } from '@/lib/types';
 
@@ -33,6 +33,7 @@ export default function SessionDetailPage() {
   const [session, setSession] = useState<WorkoutSession | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -55,6 +56,14 @@ export default function SessionDetailPage() {
     })();
   }, [id]);
 
+  async function handleDelete() {
+    if (!confirm('Delete this workout? This cannot be undone.')) return;
+    setDeleting(true);
+    await supabase.from('personal_bests').update({ session_id: null }).eq('session_id', id);
+    await supabase.from('workout_sessions').delete().eq('id', id);
+    router.push('/history');
+  }
+
   if (loading) return <div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-orange-500" /></div>;
 
   const totalSets = groups.reduce((a, g) => a + g.sets.length, 0);
@@ -65,18 +74,27 @@ export default function SessionDetailPage() {
 
   return (
     <div className="px-4 pt-8 pb-8 max-w-lg mx-auto space-y-6">
-      {/* Back + title */}
-      <div className="flex items-center gap-3">
-        <Link href="/history" className="p-2 rounded-xl bg-slate-800 text-slate-400"><ArrowLeft className="w-5 h-5" /></Link>
-        <div>
-          <h1 className="text-xl font-black text-white">{session?.name}</h1>
-          <p className="text-slate-400 text-sm">
-            {new Date(session?.started_at ?? '').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-          </p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link href="/history" className="p-2 rounded-xl bg-slate-800 text-slate-400"><ArrowLeft className="w-5 h-5" /></Link>
+          <div>
+            <h1 className="text-xl font-black text-white">{session?.name}</h1>
+            <p className="text-slate-400 text-sm">
+              {new Date(session?.started_at ?? '').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </p>
+          </div>
         </div>
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          className="p-2.5 rounded-xl bg-slate-800 text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40"
+        >
+          {deleting
+            ? <div className="w-4 h-4 border-t border-red-400 rounded-full animate-spin" />
+            : <Trash2 className="w-4 h-4" />}
+        </button>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
         {[
           { icon: Clock, label: 'Duration', val: dur(session!.started_at, session!.completed_at) },
@@ -91,7 +109,6 @@ export default function SessionDetailPage() {
         ))}
       </div>
 
-      {/* Exercises */}
       {groups.length === 0 ? (
         <div className="bg-slate-800 rounded-2xl p-6 text-center">
           <p className="text-slate-400">No sets logged for this workout</p>
@@ -133,7 +150,6 @@ export default function SessionDetailPage() {
         </div>
       )}
 
-      {/* Repeat workout */}
       {session?.template_id && (
         <Link href={`/workout/new?template=${session.template_id}`}
           className={`w-full ${btn} text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 text-base active:scale-95 transition-transform`}>
