@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react';
 import { Trophy, Search, Plus, Trash2, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
-import { Exercise, PersonalBest } from '@/lib/types';
+import { Exercise } from '@/lib/types';
 
 type ExWithPB = Exercise & { pb: { weight: number | null; reps: number | null } | null };
 
-const GROUPS = ['All', 'Chest', 'Shoulders', 'Triceps', 'Back', 'Biceps', 'Rear Delts', 'Quads', 'Hamstrings', 'Glutes', 'Calves'];
+const GROUPS = ['All', 'Chest', 'Shoulders', 'Triceps', 'Back', 'Biceps', 'Rear Delts', 'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Full Body'];
+const MUSCLE_GROUPS = GROUPS.slice(1);
 
 const GROUP_COLOR: Record<string, string> = {
   Chest: 'bg-orange-500/10 text-orange-300 border-orange-500/25',
@@ -21,6 +22,8 @@ const GROUP_COLOR: Record<string, string> = {
   Hamstrings: 'bg-green-500/10 text-green-300 border-green-500/25',
   Glutes: 'bg-green-500/10 text-green-300 border-green-500/25',
   Calves: 'bg-green-500/10 text-green-300 border-green-500/25',
+  Core: 'bg-slate-500/10 text-slate-300 border-slate-500/25',
+  'Full Body': 'bg-slate-500/10 text-slate-300 border-slate-500/25',
 };
 
 const CATEGORIES = ['Push Day', 'Pull Day', 'Legs Day'];
@@ -35,7 +38,6 @@ export default function ExercisesPage() {
   const [showForm, setShowForm] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  // New exercise form state
   const [newName, setNewName] = useState('');
   const [newMuscle, setNewMuscle] = useState('');
   const [newCategory, setNewCategory] = useState('Push Day');
@@ -58,11 +60,13 @@ export default function ExercisesPage() {
   async function addExercise() {
     if (!newName.trim()) return;
     setSaving(true);
+    const { data: { user: u } } = await supabase.auth.getUser();
     const { data } = await supabase.from('exercises').insert({
       name: newName.trim(),
-      muscle_group: newMuscle.trim() || null,
+      muscle_group: newMuscle || null,
       category: newCategory,
       weight_increment: newIncrement,
+      created_by: u?.id,
     }).select().single();
     if (data) {
       setExercises(prev => [...prev, { ...data, pb: null }].sort((a, b) => a.name.localeCompare(b.name)));
@@ -98,28 +102,24 @@ export default function ExercisesPage() {
             <h1 className="text-3xl font-black text-white tracking-tight mb-1">Exercises</h1>
             <p className="text-slate-400 text-sm">{exercises.length} exercises · {hasPR} PRs set</p>
           </div>
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="flex items-center gap-1.5 bg-orange-500 text-white text-sm font-bold px-4 py-2.5 rounded-xl active:scale-95 transition-transform mt-1"
-          >
+          <button onClick={() => setShowForm(!showForm)}
+            className="flex items-center gap-1.5 bg-orange-500 text-white text-sm font-bold px-4 py-2.5 rounded-xl active:scale-95 transition-transform mt-1">
             {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
             {showForm ? 'Cancel' : 'New'}
           </button>
         </div>
 
-        {/* Add exercise form */}
         {showForm && (
           <div className="mt-4 bg-slate-800 border border-slate-700/60 rounded-2xl p-4 space-y-3">
-            <input
-              type="text" placeholder="Exercise name *"
+            <input type="text" placeholder="Exercise name *"
               value={newName} onChange={e => setNewName(e.target.value)}
               className="w-full bg-slate-700 border border-slate-600/50 text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
             />
-            <input
-              type="text" placeholder="Muscle group (e.g. Chest)"
-              value={newMuscle} onChange={e => setNewMuscle(e.target.value)}
-              className="w-full bg-slate-700 border border-slate-600/50 text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-            />
+            <select value={newMuscle} onChange={e => setNewMuscle(e.target.value)}
+              className="w-full bg-slate-700 border border-slate-600/50 text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
+              <option value="">Muscle group (optional)</option>
+              {MUSCLE_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+            </select>
             <div>
               <p className="text-xs text-slate-500 mb-2">Category</p>
               <div className="flex gap-2">
@@ -157,8 +157,7 @@ export default function ExercisesPage() {
 
         <div className="relative mt-4">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-          <input
-            type="text" placeholder="Search exercises…"
+          <input type="text" placeholder="Search exercises…"
             value={search} onChange={e => setSearch(e.target.value)}
             className="w-full bg-slate-800 border border-slate-700/60 text-white pl-10 pr-4 py-3 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-500 placeholder:text-slate-500"
           />
@@ -214,11 +213,8 @@ export default function ExercisesPage() {
                     <span className="text-slate-600 text-xs font-medium">No PR</span>
                   )}
                   {myExerciseIds.has(ex.id) && (
-                    <button
-                      onClick={() => deleteExercise(ex.id)}
-                      disabled={deleting === ex.id}
-                      className="p-2 text-slate-600 active:text-red-400 transition-colors disabled:opacity-40"
-                    >
+                    <button onClick={() => deleteExercise(ex.id)} disabled={deleting === ex.id}
+                      className="p-2 text-slate-600 active:text-red-400 transition-colors disabled:opacity-40">
                       {deleting === ex.id
                         ? <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-slate-400" />
                         : <Trash2 className="w-4 h-4" />}

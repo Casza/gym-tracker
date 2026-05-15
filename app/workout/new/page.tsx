@@ -15,16 +15,13 @@ const DAY = {
 const FALLBACK = { gradient: 'from-slate-700/30 to-slate-900/10', border: 'border-slate-600/30', text: 'text-slate-400', btn: 'bg-slate-600 active:bg-slate-700', badge: 'bg-slate-600/15 text-slate-300 border-slate-600/25', check: 'bg-slate-500 border-slate-500', ring: 'focus:ring-slate-500' };
 
 const INCREMENT_OPTIONS = [0.5, 1, 1.25, 2.5, 5, 10, 20];
+const MUSCLE_GROUPS = ['Chest', 'Shoulders', 'Triceps', 'Back', 'Biceps', 'Rear Delts', 'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Full Body'];
 
 function ExerciseRow({ exercise, selected, onToggle, s }: {
-  exercise: Exercise;
-  selected: boolean;
-  onToggle: () => void;
-  s: typeof FALLBACK;
+  exercise: Exercise; selected: boolean; onToggle: () => void; s: typeof FALLBACK;
 }) {
   return (
-    <button
-      onClick={onToggle}
+    <button onClick={onToggle}
       className={`w-full flex items-center gap-3 p-3.5 rounded-2xl border transition-all ${
         selected ? 'bg-slate-800 border-slate-600' : 'bg-slate-900 border-slate-800'
       }`}
@@ -108,14 +105,11 @@ function ExercisePickerContent() {
     ]);
     if (!tRes.data) { setLoading(false); return; }
     setTemplate(tRes.data);
-
     const tmplExs: Exercise[] = (teRes.data ?? []).map((te: any) => te.exercises);
     setTemplateExercises(tmplExs);
     setSelected(new Set(tmplExs.map(e => e.id)));
-
     const tmplIdSet = new Set(tmplExs.map(e => e.id));
-    const { data: allCat } = await supabase
-      .from('exercises').select('*').eq('category', tRes.data.name).order('name');
+    const { data: allCat } = await supabase.from('exercises').select('*').eq('category', tRes.data.name).order('name');
     setCustomExercises((allCat ?? []).filter(e => !tmplIdSet.has(e.id)));
     setLoading(false);
   }
@@ -127,11 +121,13 @@ function ExercisePickerContent() {
   async function addCustom() {
     if (!newName.trim() || !template) return;
     setSaving(true);
+    const { data: { user } } = await supabase.auth.getUser();
     const { data } = await supabase.from('exercises').insert({
       name: newName.trim(),
-      muscle_group: newMuscle.trim() || null,
+      muscle_group: newMuscle || null,
       weight_increment: newIncrement,
       category: template.name,
+      created_by: user?.id,
     }).select().single();
     if (data) {
       const ex = data as Exercise;
@@ -169,9 +165,7 @@ function ExercisePickerContent() {
           <ArrowLeft className="w-4 h-4" /> Back
         </Link>
         <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">{template?.name}</p>
-        <h1 className={`text-4xl font-black tracking-tight ${s.text}`}>
-          {template?.name.replace(' Day', '')}
-        </h1>
+        <h1 className={`text-4xl font-black tracking-tight ${s.text}`}>{template?.name.replace(' Day', '')}</h1>
         <p className="text-slate-400 mt-1">Select exercises for today</p>
       </div>
 
@@ -198,26 +192,22 @@ function ExercisePickerContent() {
           </>
         )}
 
-        <button
-          onClick={() => setShowAddForm(!showAddForm)}
-          className="w-full mt-4 flex items-center justify-center gap-2 border border-dashed border-slate-600 text-slate-400 text-sm font-bold py-3.5 rounded-2xl active:bg-slate-800/50 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add a custom exercise
+        <button onClick={() => setShowAddForm(!showAddForm)}
+          className="w-full mt-4 flex items-center justify-center gap-2 border border-dashed border-slate-600 text-slate-400 text-sm font-bold py-3.5 rounded-2xl active:bg-slate-800/50 transition-colors">
+          <Plus className="w-4 h-4" /> Add a custom exercise
         </button>
 
         {showAddForm && (
           <div className="mt-3 bg-slate-800 border border-slate-700/60 rounded-2xl p-4 space-y-3">
-            <input
-              type="text" placeholder="Exercise name *"
+            <input type="text" placeholder="Exercise name *"
               value={newName} onChange={e => setNewName(e.target.value)}
               className={`w-full bg-slate-700 border border-slate-600/50 text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 ${s.ring}`}
             />
-            <input
-              type="text" placeholder="Muscle group (e.g. Chest)"
-              value={newMuscle} onChange={e => setNewMuscle(e.target.value)}
-              className={`w-full bg-slate-700 border border-slate-600/50 text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 ${s.ring}`}
-            />
+            <select value={newMuscle} onChange={e => setNewMuscle(e.target.value)}
+              className={`w-full bg-slate-700 border border-slate-600/50 text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 ${s.ring}`}>
+              <option value="">Muscle group (optional)</option>
+              {MUSCLE_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+            </select>
             <div>
               <p className="text-xs text-slate-500 mb-2">Weight increment</p>
               <div className="flex flex-wrap gap-2">
@@ -242,11 +232,8 @@ function ExercisePickerContent() {
 
       <div className="fixed bottom-20 left-0 right-0 px-4 z-30">
         <div className="max-w-lg mx-auto">
-          <button
-            onClick={startWorkout}
-            disabled={starting || selected.size === 0}
-            className={`w-full ${s.btn} text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 text-base active:scale-95 transition-transform disabled:opacity-50 shadow-xl`}
-          >
+          <button onClick={startWorkout} disabled={starting || selected.size === 0}
+            className={`w-full ${s.btn} text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 text-base active:scale-95 transition-transform disabled:opacity-50 shadow-xl`}>
             {starting
               ? <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-white" />
               : `Start Workout · ${selected.size} exercise${selected.size !== 1 ? 's' : ''}`}
