@@ -136,7 +136,7 @@ function ExercisePickerContent() {
     if (data) {
       const ex = data as Exercise;
       setCustomExercises(prev => [...prev, ex].sort((a, b) => a.name.localeCompare(b.name)));
-      setSelected(prev => new Set([...prev, ex.id]));
+      setSelected(prev => new Set(Array.from(prev).concat(ex.id)));
       setNewName(''); setNewMuscle(''); setNewIncrement(2.5); setShowAddForm(false);
     }
     setSaving(false);
