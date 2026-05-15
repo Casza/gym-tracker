@@ -10,6 +10,9 @@ export interface Exercise {
   id: string;
   name: string;
   muscle_group: string | null;
+  weight_increment: number | null;
+  created_by: string | null;
+  category: string | null;
   created_at: string;
 }
 
