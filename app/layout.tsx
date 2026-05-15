@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import BottomNav from '@/components/BottomNav';
+import { AuthProvider } from '@/components/AuthProvider';
+import AuthGuard from '@/components/AuthGuard';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -25,8 +27,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.className} bg-slate-900 text-white min-h-screen`}>
-        <main className="pb-20 min-h-screen">{children}</main>
-        <BottomNav />
+        <AuthProvider>
+          <AuthGuard>
+            <main className="pb-20 min-h-screen">{children}</main>
+            <BottomNav />
+          </AuthGuard>
+        </AuthProvider>
       </body>
     </html>
   );

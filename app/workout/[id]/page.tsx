@@ -18,7 +18,6 @@ type ExData = {
   collapsed: boolean;
 };
 
-// kg increment per exercise — barbell compounds go up 5, cables/dumbbells 2.5, isolations 1
 const INCREMENTS: Record<string, number> = {
   'Bench Press': 5, 'Overhead Press': 2.5, 'Incline Dumbbell Press': 2.5,
   'Cable Fly': 2.5, 'Tricep Pushdown': 2.5, 'Overhead Tricep Extension': 2.5,
@@ -139,7 +138,6 @@ export default function ActiveWorkoutPage() {
       if (savedForEx.length > 0) {
         sets = savedForEx.map(x => ({ id: x.id, weight: x.weight?.toString() ?? '', reps: x.reps?.toString() ?? '', completed: x.completed }));
       } else if (prevForEx.length > 0) {
-        // Auto-fill from previous session so the user just tweaks and checks off
         sets = prevForEx.map(ps => ({ weight: ps.weight?.toString() ?? '', reps: ps.reps?.toString() ?? '', completed: false }));
       } else {
         sets = [{ weight: '', reps: '', completed: false }];
@@ -225,7 +223,7 @@ export default function ActiveWorkoutPage() {
       if (isNewPR) {
         await supabase.from('personal_bests').upsert(
           { exercise_id: ex.exercise.id, weight, reps: reps || null, achieved_at: new Date().toISOString(), session_id: id },
-          { onConflict: 'exercise_id' }
+          { onConflict: 'exercise_id,user_id' }
         );
         setNewPRs(prev => Array.from(new Set([...prev, ex.exercise.name])));
         setExData(prev => prev.map((e, i) => i === ei ? { ...e, pb: { weight, reps: reps || null } } : e));
@@ -295,7 +293,6 @@ export default function ActiveWorkoutPage() {
             <p className="text-slate-500 text-xs mt-0.5">volume</p>
           </div>
           <div className="w-px h-8 bg-slate-700" />
-          {/* Rest duration picker — tap to cycle */}
           <button onClick={cycleRest} className="flex-1 text-center group">
             <p className="text-white font-bold text-lg leading-none flex items-center justify-center gap-1">
               <Timer className="w-3.5 h-3.5 text-slate-400" />
@@ -335,7 +332,6 @@ export default function ActiveWorkoutPage() {
                 allDone ? 'bg-slate-800/40 border-green-500/20' : 'bg-slate-800 border-slate-700/50'
               }`}
             >
-              {/* Exercise header */}
               <button onClick={() => toggleCollapse(ei)} className="w-full text-left">
                 <div className="flex items-center gap-3 px-4 py-3.5">
                   <div className={`w-1 h-10 rounded-full shrink-0 ${allDone ? 'bg-green-500' : dc.bar}`} />
@@ -371,7 +367,6 @@ export default function ActiveWorkoutPage() {
 
               {!ex.collapsed && (
                 <>
-                  {/* Column headers */}
                   <div className="flex items-center gap-2 px-4 py-2 bg-slate-900/40 text-slate-500 text-xs font-semibold border-t border-slate-700/50">
                     <span className="w-5 text-center shrink-0">#</span>
                     <span className="flex-1">Previous</span>
@@ -380,7 +375,6 @@ export default function ActiveWorkoutPage() {
                     <span className="w-9 shrink-0" />
                   </div>
 
-                  {/* Set rows */}
                   <div className="divide-y divide-slate-700/30">
                     {ex.sets.map((set, si) => {
                       const prev = ex.prev.find(p => p.set_number === si + 1) ?? ex.prev[si];
@@ -395,7 +389,6 @@ export default function ActiveWorkoutPage() {
 
                           <span className="flex-1 text-slate-500 text-xs truncate min-w-0">{prevLabel ?? '—'}</span>
 
-                          {/* Weight stepper */}
                           <div className="flex items-center gap-1 w-32 shrink-0">
                             <button
                               onClick={() => adjustWeight(ei, si, -increment)}
@@ -413,7 +406,6 @@ export default function ActiveWorkoutPage() {
                             >+</button>
                           </div>
 
-                          {/* Reps */}
                           <input
                             type="number" inputMode="numeric" placeholder="0"
                             value={set.reps}
@@ -421,7 +413,6 @@ export default function ActiveWorkoutPage() {
                             className={`w-14 shrink-0 bg-slate-700 border border-slate-600/50 text-white text-center rounded-lg py-2 text-sm font-bold focus:outline-none focus:ring-2 ${dc.ring} ${set.completed ? 'opacity-50' : ''}`}
                           />
 
-                          {/* Complete */}
                           <button
                             onClick={() => toggleComplete(ei, si)}
                             className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 shrink-0 ${
@@ -435,7 +426,6 @@ export default function ActiveWorkoutPage() {
                     })}
                   </div>
 
-                  {/* Add / remove */}
                   <div className="flex gap-2 px-4 py-3 border-t border-slate-700/40">
                     <button onClick={() => addSet(ei)}
                       className="flex-1 flex items-center justify-center gap-2 bg-slate-700/80 text-slate-300 text-sm font-bold py-2.5 rounded-xl active:bg-slate-600 transition-colors">
@@ -461,7 +451,7 @@ export default function ActiveWorkoutPage() {
         </button>
       </div>
 
-      {/* Rest timer — floats above bottom nav */}
+      {/* Rest timer */}
       {restRemaining !== null && (
         <div className="fixed bottom-20 left-0 right-0 px-4 z-50">
           <div className="max-w-lg mx-auto bg-slate-800 border border-slate-600 rounded-2xl px-5 py-4 flex items-center justify-between shadow-2xl">
