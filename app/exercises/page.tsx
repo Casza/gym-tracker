@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Trophy, Search, Plus, Trash2, X } from 'lucide-react';
+import { Trophy, Search, Plus, Trash2, X, ChevronRight } from 'lucide-react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 import { Exercise } from '@/lib/types';
@@ -181,7 +182,8 @@ export default function ExercisesPage() {
         ) : (
           <div className="bg-slate-800 border border-slate-700/50 rounded-2xl divide-y divide-slate-700/50 overflow-hidden">
             {filtered.map(ex => (
-              <div key={ex.id} className="flex items-center gap-3 px-4 py-4">
+              <Link key={ex.id} href={`/exercises/${ex.id}`}
+                className="flex items-center gap-3 px-4 py-4 active:bg-slate-700/40 transition-colors">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="font-bold text-white">{ex.name}</p>
@@ -192,36 +194,38 @@ export default function ExercisesPage() {
                   <div className="flex items-center gap-2 mt-1">
                     {ex.muscle_group && (
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${
-                        GROUP_COLOR[ex.muscle_group ?? ''] ?? 'bg-slate-700 text-slate-400 border-slate-600'
+                        GROUP_COLOR[ex.muscle_group] ?? 'bg-slate-700 text-slate-400 border-slate-600'
                       }`}>{ex.muscle_group}</span>
                     )}
                     <span className="text-xs text-slate-600">±{ex.weight_increment ?? 2.5}kg</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
+                <div className="flex items-center gap-2 shrink-0">
                   {ex.pb ? (
                     <div className="text-right">
                       <div className="flex items-center gap-1 justify-end">
                         <Trophy className="w-3.5 h-3.5 text-yellow-400" />
-                        <p className="text-yellow-400 font-black text-sm">{ex.pb.weight ? `${ex.pb.weight} kg` : `${ex.pb.reps} reps`}</p>
+                        <p className="text-yellow-400 font-black text-sm">{ex.pb.weight ? `${ex.pb.weight}kg` : `${ex.pb.reps}r`}</p>
                       </div>
-                      {ex.pb.weight && ex.pb.reps && (
-                        <p className="text-slate-500 text-xs mt-0.5">× {ex.pb.reps} reps</p>
-                      )}
+                      {ex.pb.weight && ex.pb.reps && <p className="text-slate-500 text-xs">× {ex.pb.reps}</p>}
                     </div>
                   ) : (
-                    <span className="text-slate-600 text-xs font-medium">No PR</span>
+                    <span className="text-slate-600 text-xs">No PR</span>
                   )}
-                  {myExerciseIds.has(ex.id) && (
-                    <button onClick={() => deleteExercise(ex.id)} disabled={deleting === ex.id}
+                  {myExerciseIds.has(ex.id) ? (
+                    <button
+                      onClick={e => { e.preventDefault(); e.stopPropagation(); deleteExercise(ex.id); }}
+                      disabled={deleting === ex.id}
                       className="p-2 text-slate-600 active:text-red-400 transition-colors disabled:opacity-40">
                       {deleting === ex.id
                         ? <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-slate-400" />
                         : <Trash2 className="w-4 h-4" />}
                     </button>
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-slate-600" />
                   )}
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         )}

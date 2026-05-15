@@ -151,6 +151,13 @@ export default function SessionDetailPage() {
         </div>
       )}
 
+      {(session as any)?.notes && (
+        <div className="bg-slate-800 border border-slate-700/50 rounded-2xl p-4">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Notes</p>
+          <p className="text-slate-300 text-sm whitespace-pre-wrap">{(session as any).notes}</p>
+        </div>
+      )}
+
       {session?.template_id && (
         <Link href={`/workout/new?template=${session.template_id}`}
           className={`w-full ${btn} text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 text-base active:scale-95 transition-transform`}>

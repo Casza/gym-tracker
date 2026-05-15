@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Play, ChevronRight, Flame, Calendar } from 'lucide-react';
+import { Play, ChevronRight, Flame, Calendar, Scale, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { WorkoutSession, Exercise, WorkoutTemplate } from '@/lib/types';
+import { useAuth } from '@/components/AuthProvider';
 
 type TemplateCard = WorkoutTemplate & { exercises: Exercise[] };
+type WeightLog = { weight: number; logged_at: string };
 
 const PPL_ORDER = ['Push Day', 'Pull Day', 'Legs Day'];
 
@@ -66,18 +68,42 @@ function dur(start: string, end: string | null) {
   return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
+function WeightSparkline({ logs }: { logs: WeightLog[] }) {
+  if (logs.length < 2) return null;
+  const W = 120, H = 36, pad = 4;
+  const weights = logs.map(l => l.weight);
+  const minW = Math.min(...weights), maxW = Math.max(...weights);
+  const range = maxW - minW || 1;
+  const cw = W - pad * 2, ch = H - pad * 2;
+  const cx = (i: number) => pad + (i / (logs.length - 1)) * cw;
+  const cy = (w: number) => pad + (1 - (w - minW) / range) * ch;
+  const pathD = logs.map((l, i) => `${i === 0 ? 'M' : 'L'}${cx(i)},${cy(l.weight)}`).join(' ');
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-20 h-9 shrink-0">
+      <path d={pathD} fill="none" stroke="#60a5fa" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={cx(logs.length - 1)} cy={cy(logs[logs.length - 1].weight)} r="2.5" fill="#60a5fa" />
+    </svg>
+  );
+}
+
 export default function Dashboard() {
+  const { user } = useAuth();
   const [templates, setTemplates] = useState<TemplateCard[]>([]);
   const [recent, setRecent] = useState<WorkoutSession[]>([]);
   const [weekCount, setWeekCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
+  const [weightLogs, setWeightLogs] = useState<WeightLog[]>([]);
+  const [weightInput, setWeightInput] = useState('');
+  const [savingWeight, setSavingWeight] = useState(false);
+
   useEffect(() => {
     (async () => {
-      const [tRes, teRes, sRes] = await Promise.all([
+      const [tRes, teRes, sRes, wRes] = await Promise.all([
         supabase.from('workout_templates').select('*'),
         supabase.from('template_exercises').select('template_id, exercises(*), order_index').order('order_index'),
         supabase.from('workout_sessions').select('*, workout_templates(name)').order('started_at', { ascending: false }).limit(3),
+        supabase.from('body_weight_logs').select('weight, logged_at').order('logged_at', { ascending: false }).limit(10),
       ]);
 
       if (tRes.data && teRes.data) {
@@ -98,15 +124,43 @@ export default function Dashboard() {
         const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
         setWeekCount(sRes.data.filter(s => s.completed_at && new Date(s.completed_at) >= weekAgo).length);
       }
+
+      if (wRes.data) {
+        setWeightLogs([...wRes.data].reverse());
+      }
+
       setLoading(false);
     })();
   }, []);
+
+  async function logWeight() {
+    const val = parseFloat(weightInput);
+    if (!val || val < 20 || val > 300) return;
+    setSavingWeight(true);
+    const today = new Date().toISOString().slice(0, 10);
+    const { data } = await supabase.from('body_weight_logs').upsert(
+      { weight: val, logged_at: today, user_id: user?.id },
+      { onConflict: 'user_id,logged_at' }
+    ).select('weight, logged_at').single();
+    if (data) {
+      setWeightLogs(prev => {
+        const filtered = prev.filter(l => l.logged_at !== today);
+        return [...filtered, data].sort((a, b) => a.logged_at.localeCompare(b.logged_at));
+      });
+      setWeightInput('');
+    }
+    setSavingWeight(false);
+  }
 
   if (loading) return (
     <div className="flex items-center justify-center h-screen">
       <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-orange-500" />
     </div>
   );
+
+  const latestWeight = weightLogs.length > 0 ? weightLogs[weightLogs.length - 1] : null;
+  const prevWeight = weightLogs.length > 1 ? weightLogs[weightLogs.length - 2] : null;
+  const weightDiff = latestWeight && prevWeight ? latestWeight.weight - prevWeight.weight : null;
 
   return (
     <div className="px-4 pt-8 pb-6 max-w-lg mx-auto space-y-8">
@@ -124,6 +178,54 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Body Weight Widget */}
+      <section>
+        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Body Weight</p>
+        <div className="bg-slate-800 border border-slate-700/50 rounded-2xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <Scale className="w-4 h-4 text-blue-400" />
+              <div>
+                <p className="text-white font-black text-xl leading-none">
+                  {latestWeight ? `${latestWeight.weight} kg` : '—'}
+                </p>
+                {weightDiff !== null && (
+                  <div className="flex items-center gap-1 mt-0.5">
+                    {weightDiff > 0
+                      ? <TrendingUp className="w-3 h-3 text-red-400" />
+                      : weightDiff < 0
+                        ? <TrendingDown className="w-3 h-3 text-green-400" />
+                        : <Minus className="w-3 h-3 text-slate-500" />}
+                    <span className={`text-xs font-bold ${weightDiff > 0 ? 'text-red-400' : weightDiff < 0 ? 'text-green-400' : 'text-slate-500'}`}>
+                      {weightDiff > 0 ? '+' : ''}{weightDiff.toFixed(1)} kg
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <WeightSparkline logs={weightLogs} />
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="number"
+              inputMode="decimal"
+              placeholder="Today's weight (kg)"
+              value={weightInput}
+              onChange={e => setWeightInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && logWeight()}
+              className="flex-1 bg-slate-700 border border-slate-600/50 text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-500"
+            />
+            <button
+              onClick={logWeight}
+              disabled={savingWeight || !weightInput}
+              className="bg-blue-500 text-white font-bold px-4 py-2.5 rounded-xl text-sm active:scale-95 transition-transform disabled:opacity-40"
+            >
+              {savingWeight ? '…' : 'Log'}
+            </button>
+          </div>
+        </div>
+      </section>
 
       {/* PPL Day Cards */}
       <section>

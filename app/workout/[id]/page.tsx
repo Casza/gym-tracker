@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Check, Plus, Trophy, Trash2, Flag, ChevronDown, ChevronUp, Timer, Search } from 'lucide-react';
+import { ArrowLeft, Check, Plus, Trophy, Trash2, Flag, ChevronDown, ChevronUp, Timer, Search, Calculator, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { WorkoutSession, Exercise } from '@/lib/types';
 
@@ -18,7 +18,6 @@ type ExData = {
   collapsed: boolean;
 };
 
-// Fallback increments for default exercises that pre-date the weight_increment column
 const FALLBACK_INCREMENTS: Record<string, number> = {
   'Bench Press': 5, 'Overhead Press': 2.5, 'Incline Dumbbell Press': 2.5,
   'Cable Fly': 2.5, 'Tricep Pushdown': 2.5, 'Overhead Tricep Extension': 2.5,
@@ -30,7 +29,20 @@ const FALLBACK_INCREMENTS: Record<string, number> = {
 };
 
 const REST_OPTIONS = [60, 90, 120, 180];
+const PLATE_TYPES = [25, 20, 15, 10, 5, 2.5, 1.25];
+const BAR_OPTIONS = [10, 15, 20];
+
 function fmtRest(s: number) { return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+
+function calcPlates(target: number, bar: number) {
+  let remaining = Math.max(0, (target - bar) / 2);
+  const result: { plate: number; count: number }[] = [];
+  for (const p of PLATE_TYPES) {
+    const count = Math.floor(remaining / p + 0.0001);
+    if (count > 0) { result.push({ plate: p, count }); remaining = Math.round((remaining - count * p) * 1000) / 1000; }
+  }
+  return result;
+}
 
 const DAY_COLOR: Record<string, { text: string; bar: string; ring: string; badge: string }> = {
   'Push Day': { text: 'text-orange-400', bar: 'bg-orange-500', ring: 'focus:ring-orange-500', badge: 'bg-orange-500/15 text-orange-300 border-orange-500/25' },
@@ -53,7 +65,13 @@ export default function ActiveWorkoutPage() {
   const [restDuration, setRestDuration] = useState(90);
   const restRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Mid-workout exercise picker
+  const [showFinishModal, setShowFinishModal] = useState(false);
+  const [sessionNotes, setSessionNotes] = useState('');
+
+  const [showPlateCalc, setShowPlateCalc] = useState(false);
+  const [targetWeight, setTargetWeight] = useState('');
+  const [barWeight, setBarWeight] = useState(20);
+
   const [showExPicker, setShowExPicker] = useState(false);
   const [availableExercises, setAvailableExercises] = useState<Exercise[]>([]);
   const [exPickerSearch, setExPickerSearch] = useState('');
@@ -102,7 +120,6 @@ export default function ActiveWorkoutPage() {
     if (sess.completed_at) { router.push(`/history/${id}`); return; }
     setSession(sess);
 
-    // Load exercises — prefer session_exercises (new flow), fall back to template_exercises
     const { data: seData } = await supabase
       .from('session_exercises').select('*, exercises(*)')
       .eq('session_id', id).order('order_index');
@@ -170,10 +187,8 @@ export default function ActiveWorkoutPage() {
   async function addExerciseMid(exercise: Exercise) {
     const orderIndex = exData.length;
     await supabase.from('session_exercises').insert({ session_id: id, exercise_id: exercise.id, order_index: orderIndex });
-    const newEntry: ExData = { exercise, sets: [{ weight: '', reps: '', completed: false }], prev: [], prevMax: null, pb: null, collapsed: false };
-    setExData(prev => [...prev, newEntry]);
+    setExData(prev => [...prev, { exercise, sets: [{ weight: '', reps: '', completed: false }], prev: [], prevMax: null, pb: null, collapsed: false }]);
     setAvailableExercises(prev => prev.filter(e => e.id !== exercise.id));
-    if (availableExercises.filter(e => e.id !== exercise.id).length === 0) setShowExPicker(false);
   }
 
   function getIncrement(ex: Exercise) {
@@ -261,7 +276,10 @@ export default function ActiveWorkoutPage() {
   async function finish() {
     setFinishing(true);
     skipRest();
-    await supabase.from('workout_sessions').update({ completed_at: new Date().toISOString() }).eq('id', id);
+    await supabase.from('workout_sessions').update({
+      completed_at: new Date().toISOString(),
+      notes: sessionNotes.trim() || null,
+    }).eq('id', id);
     router.push(`/history/${id}`);
   }
 
@@ -281,15 +299,15 @@ export default function ActiveWorkoutPage() {
 
   const templateName = (session as any)?.workout_templates?.name ?? '';
   const dc = DAY_COLOR[templateName] ?? FALLBACK_DC;
-
-  const filteredAvail = availableExercises.filter(e =>
-    e.name.toLowerCase().includes(exPickerSearch.toLowerCase())
-  );
+  const filteredAvail = availableExercises.filter(e => e.name.toLowerCase().includes(exPickerSearch.toLowerCase()));
+  const plateResult = calcPlates(parseFloat(targetWeight) || 0, barWeight);
+  const totalOnBar = plateResult.reduce((a, r) => a + r.plate * r.count * 2, 0) + barWeight;
 
   if (loading) return <div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-orange-500" /></div>;
 
   return (
     <div className="max-w-lg mx-auto">
+      {/* Sticky header */}
       <div className="sticky top-0 z-20 bg-slate-900/96 backdrop-blur-md border-b border-slate-800 px-4 pt-6 pb-3">
         <div className="flex items-center justify-between mb-3">
           <Link href="/" className="p-2 -ml-1 rounded-xl text-slate-400"><ArrowLeft className="w-5 h-5" /></Link>
@@ -297,10 +315,16 @@ export default function ActiveWorkoutPage() {
             <p className={`font-black text-base ${dc.text}`}>{session?.name}</p>
             <p className="text-slate-500 text-xs font-mono">{elapsed}</p>
           </div>
-          <button onClick={finish} disabled={finishing}
-            className="bg-green-500 text-white text-sm font-black px-4 py-2 rounded-xl active:scale-95 transition-transform disabled:opacity-40">
-            {finishing ? '...' : 'Finish'}
-          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setShowPlateCalc(true)}
+              className="p-2 rounded-xl text-slate-500 active:text-slate-300 active:bg-slate-800 transition-colors">
+              <Calculator className="w-4 h-4" />
+            </button>
+            <button onClick={() => setShowFinishModal(true)} disabled={finishing}
+              className="bg-green-500 text-white text-sm font-black px-4 py-2 rounded-xl active:scale-95 transition-transform disabled:opacity-40">
+              {finishing ? '...' : 'Finish'}
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-3 mb-3">
           <div className="flex-1 text-center">
@@ -317,7 +341,7 @@ export default function ActiveWorkoutPage() {
             <p className="text-white font-bold text-lg leading-none flex items-center justify-center gap-1">
               <Timer className="w-3.5 h-3.5 text-slate-400" />{fmtRest(restDuration)}
             </p>
-            <p className="text-slate-500 text-xs mt-0.5">rest • tap</p>
+            <p className="text-slate-500 text-xs mt-0.5">rest · tap</p>
           </button>
         </div>
         <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
@@ -348,9 +372,7 @@ export default function ActiveWorkoutPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <h3 className={`font-black text-base ${allDone ? 'text-slate-400' : 'text-white'}`}>{ex.exercise.name}</h3>
-                      {trend && <span className={`text-sm font-black ${
-                        trend === '↑' ? 'text-green-400' : trend === '↓' ? 'text-red-400' : 'text-slate-500'
-                      }`}>{trend}</span>}
+                      {trend && <span className={`text-sm font-black ${trend === '↑' ? 'text-green-400' : trend === '↓' ? 'text-red-400' : 'text-slate-500'}`}>{trend}</span>}
                       {allDone && <span className="text-green-400 text-xs font-bold">✓ Done</span>}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
@@ -426,7 +448,6 @@ export default function ActiveWorkoutPage() {
           );
         })}
 
-        {/* Add exercise mid-workout */}
         {!showExPicker ? (
           <button onClick={openExPicker}
             className="w-full flex items-center justify-center gap-2 border border-dashed border-slate-700 text-slate-500 text-sm font-bold py-3.5 rounded-2xl active:bg-slate-800/50 transition-colors">
@@ -467,13 +488,14 @@ export default function ActiveWorkoutPage() {
           </div>
         )}
 
-        <button onClick={finish} disabled={finishing}
+        <button onClick={() => setShowFinishModal(true)} disabled={finishing}
           className="w-full bg-green-500 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 text-base active:scale-95 transition-transform disabled:opacity-40 shadow-lg shadow-green-500/20">
           <Flag className="w-5 h-5" />
           {finishing ? 'Saving...' : 'Finish Workout'}
         </button>
       </div>
 
+      {/* Rest timer */}
       {restRemaining !== null && (
         <div className="fixed bottom-20 left-0 right-0 px-4 z-50">
           <div className="max-w-lg mx-auto bg-slate-800 border border-slate-600 rounded-2xl px-5 py-4 flex items-center justify-between shadow-2xl">
@@ -490,6 +512,93 @@ export default function ActiveWorkoutPage() {
                   style={{ width: `${(restRemaining / restDuration) * 100}%` }} />
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Finish modal */}
+      {showFinishModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end" onClick={() => setShowFinishModal(false)}>
+          <div className="bg-slate-800 border-t border-slate-700 rounded-t-3xl w-full max-w-lg mx-auto p-6 space-y-5"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-black text-white">Session complete!</h2>
+                <p className="text-slate-400 text-sm mt-0.5">{elapsed} · {completedSets} sets · {Math.round(totalVolume)}kg</p>
+              </div>
+              <button onClick={() => setShowFinishModal(false)} className="p-2 text-slate-500">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Session note (optional)</p>
+              <textarea
+                value={sessionNotes}
+                onChange={e => setSessionNotes(e.target.value)}
+                placeholder="How did it go? Any PRs, injuries, or notes…"
+                rows={3}
+                className="w-full bg-slate-700 border border-slate-600/50 text-white rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 placeholder:text-slate-500 resize-none"
+              />
+            </div>
+            <button onClick={finish} disabled={finishing}
+              className="w-full bg-green-500 text-white font-black py-4 rounded-2xl text-base active:scale-95 transition-transform disabled:opacity-40">
+              {finishing ? 'Saving…' : 'Save & Finish'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Plate calculator modal */}
+      {showPlateCalc && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end" onClick={() => setShowPlateCalc(false)}>
+          <div className="bg-slate-800 border-t border-slate-700 rounded-t-3xl w-full max-w-lg mx-auto p-6 space-y-5"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-black text-white">Plate Calculator</h2>
+              <button onClick={() => setShowPlateCalc(false)} className="p-2 text-slate-500"><X className="w-5 h-5" /></button>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Bar weight</p>
+              <div className="flex gap-2">
+                {BAR_OPTIONS.map(b => (
+                  <button key={b} onClick={() => setBarWeight(b)}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-colors ${
+                      barWeight === b ? 'bg-orange-500 text-white' : 'bg-slate-700 text-slate-400'
+                    }`}>{b}kg</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Target weight (kg)</p>
+              <input
+                type="number" inputMode="decimal" placeholder="e.g. 100"
+                value={targetWeight} onChange={e => setTargetWeight(e.target.value)}
+                className="w-full bg-slate-700 border border-slate-600/50 text-white rounded-xl px-4 py-3 text-lg font-bold focus:outline-none focus:ring-2 focus:ring-orange-500 placeholder:text-slate-600"
+              />
+            </div>
+            {parseFloat(targetWeight) > barWeight && (
+              <div className="bg-slate-700/50 rounded-2xl p-4 space-y-3">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Each side</p>
+                {plateResult.length === 0 ? (
+                  <p className="text-slate-400 text-sm">No plates needed</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {plateResult.map(({ plate, count }) => (
+                      <div key={plate} className="bg-slate-600 rounded-xl px-3 py-2 text-center">
+                        <p className="text-white font-black text-base">{count}×</p>
+                        <p className="text-slate-300 text-xs font-bold">{plate}kg</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-slate-400 text-sm font-medium pt-1 border-t border-slate-600">
+                  Total on bar: <span className="text-white font-black">{totalOnBar}kg</span>
+                  {totalOnBar !== parseFloat(targetWeight) && (
+                    <span className="text-slate-500"> (nearest: {totalOnBar}kg)</span>
+                  )}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
